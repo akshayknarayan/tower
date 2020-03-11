@@ -138,3 +138,68 @@ where
         cl.call(req)
     }
 }
+
+macro_rules! def_router {
+    (<$first: ident, $f: tt>, $(<$services: ident, $num: tt>),+) => (
+        struct Router<$first, $($services),+> {
+            inner: ($first, $($services),+),
+        }
+
+        service_impls!(<> <$first, $f>, $(<$services, $num>),+);
+    )
+}
+
+macro_rules! service_impls {
+    (<> <$this: ident, $num: tt>, $(<$rest: ident, $y: tt>),*) => (
+        impl<T, $this, $($rest),*> Service<T> for Router<$this, $($rest),*> where $this: Service<T> {
+            type Response = <$this>::Response;
+            type Error = <$this>::Error;
+            type Future = <$this>::Future;
+
+            fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                self.inner.$num.poll_ready(cx)
+            }
+
+            fn call(&mut self, req: T) -> Self::Future {
+                self.inner.$num.call(req)
+            }
+        }
+
+        service_impls!(<$this, $num> <> $(<$rest, $y>),*);
+    );
+    ($(<$done: ident, $x: tt>),* <> <$this: ident, $num: tt>, $(<$rest: ident, $y: tt>),*) => (
+        impl<T, $($done),*, $this, $($rest),*> Service<T> for Router<$($done),* $this, $($rest),*> where $this: Service<T> {
+            type Response = <$this>::Response;
+            type Error = <$this>::Error;
+            type Future = <$this>::Future;
+
+            fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                self.inner.$num.poll_ready(cx)
+            }
+
+            fn call(&mut self, req: T) -> Self::Future {
+                self.inner.$num.call(req)
+            }
+        }
+
+        service_impls!($(<$done, $x>),* <$this, $num> <> $(<$rest, $y>),*);
+    );
+    ($(<$done: ident, $x: tt>),* <> <$this: ident, $num: tt>) => (
+        impl<T, $($done),*, $this> Service<T> for Router<$($done),*, $this> where $this: Service<T> {
+            type Response = <$this>::Response;
+            type Error = <$this>::Error;
+            type Future = <$this>::Future;
+
+            fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+                self.inner.$num.poll_ready(cx)
+            }
+
+            fn call(&mut self, req: T) -> Self::Future {
+                self.inner.$num.call(req)
+            }
+        }
+    );
+}
+
+def_router!(<S1, 0>, <S2, 1>);
+def_router!(<S1, 0>, <S2, 1>, <S3, 2>);
